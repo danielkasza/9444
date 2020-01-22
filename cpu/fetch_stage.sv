@@ -40,10 +40,6 @@
 
 `include "common.sv"
 
-`ifndef JUNO_RESET_VADDR
-`define JUNO_RESET_VADDR 0
-`endif
-
 module FetchStage#(
     logic  [`XLEN-1:0] reset_vaddr = 0
 )(
