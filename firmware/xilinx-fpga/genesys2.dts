@@ -1,0 +1,123 @@
+/* Copyright (c) 2019, 2020, Daniel Kasza
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/dts-v1/;
+
+/ {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "dkasza,9444-fpga-genesys2";
+    model = "dkasza,9444-fpga-genesys2";
+
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        timebase-frequency = <50000000>;
+
+        cpu@0 {
+            device_type = "cpu";
+            reg = <0x0>;
+            status = "okay";
+            compatible = "riscv";
+            riscv,isa = "rv64ima";
+            mmu-type = "riscv,sv39";
+            clock-frequency = <50000000>;
+
+            ic: interrupt-controller {
+                #interrupt-cells = <0x1>;
+                interrupt-controller;
+                compatible = "riscv,cpu-intc";
+            };
+        };
+    };
+
+    memory@80000000 {
+        device_type = "memory";
+        // The actual memory is 1GB, but we reserve the framebuffer at the top of the DDR.
+        reg = <0x0 0x80000000 0x0 0x3FE80000>;
+    };
+
+    soc {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        compatible = "dkasza,9444-fpga-genesys2-soc", "simple-bus";
+        ranges;
+
+        plic: plic@101000000 {
+            compatible = "dkasza,trivial-plic", "riscv,plic0";
+            #interrupt-cells = <1>;
+            interrupt-controller;
+            riscv,ndev = <31>;
+            reg = <0x1 0x01000000 0x0 0x1000000>;
+            interrupts-extended = <&ic 9 &ic 11>;
+        };
+
+        serial@100000000 {
+            compatible = "xlnx,axi-uartlite-2.0", "xlnx,xps-uartlite-1.00.a";
+            current-speed = <115200>;
+            device_type = "serial";
+            interrupt-names = "interrupt";
+            interrupts-extended = <&plic 1>;
+            port-number = <0>;
+            reg = <0x1 0x00000000 0x0 0x10000>;
+            status = "okay";
+        };
+
+        axi_quad_spi@100010000 {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            compatible = "xlnx,xps-spi-2.00.a";
+            interrupts-extended = <&plic 2>;
+            reg = <0x1 0x00010000 0x0 0x10000>;
+            xlnx,num-ss-bits = <1>;
+
+            mmc-slot@0 {
+                compatible = "mmc-spi-slot";
+                reg = <0>;
+                voltage-ranges = <3300 3300>;
+                spi-max-frequency = <50000000>;
+            };
+        };
+
+        ps2@100020000 {
+            compatible = "dkasza,trivial-ps2", "xlnx,xps-ps2-1.00.a";
+            interrupts-extended = <&plic 3>;
+            reg = <0x1 0x00020000 0x0 0x10000>;
+        };
+
+        framebuffer@bfe80000 {
+            compatible = "simple-framebuffer";
+            reg = <0x0 0xBFE80000 0x0 0x180000>;
+            width = <1024>;
+            height = <768>;
+            stride = <2048>;
+            format = "r5g6b5";
+        };
+    };
+
+    chosen {
+        bootargs = "console=ttyUL0 rootdelay=5 root=/dev/mmcblk0p1 rw";
+    };
+};
