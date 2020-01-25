@@ -113,7 +113,7 @@ SimpleFBState *simplefb_init(PhysMemoryMap *map, uint64_t phys_addr,
 
     fb_dev->width = width;
     fb_dev->height = height;
-    fb_dev->stride = width * 4;
+    fb_dev->stride = width * 2;
     fb_dev->fb_size = (height * fb_dev->stride + FB_ALLOC_ALIGN - 1) & ~(FB_ALLOC_ALIGN - 1);
     s->fb_page_count = fb_dev->fb_size >> DEVRAM_PAGE_SIZE_LOG2;
 

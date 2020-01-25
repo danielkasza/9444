@@ -59,11 +59,11 @@ static void sdl_update_fb_surface(FBDevice *fb_dev)
         fb_stride = fb_dev->stride;
         fb_surface = SDL_CreateRGBSurfaceFrom(fb_dev->fb_data,
                                               fb_dev->width, fb_dev->height,
-                                              32, fb_dev->stride,
-                                              0x00ff0000,
-                                              0x0000ff00,
-                                              0x000000ff,
-                                              0x00000000);
+                                              16, fb_dev->stride,
+                                              0xF800, // R
+                                              0x07E0, // G
+                                              0x001F, // B
+                                              0x0000);
         if (!fb_surface) {
             fprintf(stderr, "Could not create SDL framebuffer surface\n");
             exit(1);
@@ -268,7 +268,7 @@ void sdl_init(int width, int height)
         exit(1);
     }
 
-    SDL_WM_SetCaption("TinyEMU", "TinyEMU");
+    SDL_WM_SetCaption("9444 Simulator", "9444 Simulator");
 
     sdl_hide_cursor();
 }

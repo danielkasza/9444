@@ -1,0 +1,4 @@
+*.o
+*.d
+cpu_lib*
+9444-simulator

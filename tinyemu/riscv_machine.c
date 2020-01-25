@@ -259,11 +259,11 @@ static uint32_t plic_read(void *opaque, uint32_t offset, int size_log2)
     uint32_t val, mask;
     int i;
     assert(size_log2 == 2);
-    switch(offset) {
-    case PLIC_HART_BASE:
+    switch(offset % 0x1000) {
+    case 0:
         val = 0;
         break;
-    case PLIC_HART_BASE + 4:
+    case 4:
         mask = s->plic_pending_irq & ~s->plic_served_irq;
         if (mask != 0) {
             i = ctz32(mask);
@@ -287,8 +287,8 @@ static void plic_write(void *opaque, uint32_t offset, uint32_t val,
     RISCVMachine *s = opaque;
     
     assert(size_log2 == 2);
-    switch(offset) {
-    case PLIC_HART_BASE + 4:
+    switch(offset % 0x1000) {
+    case 4:
         val--;
         if (val < 32) {
             s->plic_served_irq &= ~(1 << val);
@@ -596,6 +596,8 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     uint32_t tab[4];
     FBDevice *fb_dev;
     
+    fprintf(stderr, "Kernel start: %" PRIx64 "\n", kernel_start);
+
     s = fdt_init();
 
     cur_phandle = 1;
@@ -610,7 +612,7 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     fdt_begin_node(s, "cpus");
     fdt_prop_u32(s, "#address-cells", 1);
     fdt_prop_u32(s, "#size-cells", 0);
-    fdt_prop_u32(s, "timebase-frequency", RTC_FREQ);
+    fdt_prop_u32(s, "timebase-frequency", 20000000);
 
     /* cpu */
     fdt_begin_node_num(s, "cpu", 0);
@@ -630,8 +632,8 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     *q = '\0';
     fdt_prop_str(s, "riscv,isa", isa_string);
     
-    fdt_prop_str(s, "mmu-type", max_xlen <= 32 ? "riscv,sv32" : "riscv,sv48");
-    fdt_prop_u32(s, "clock-frequency", 2000000000);
+    fdt_prop_str(s, "mmu-type", max_xlen <= 32 ? "riscv,sv32" : "riscv,sv39");
+    fdt_prop_u32(s, "clock-frequency", 20000000);
 
     fdt_begin_node(s, "interrupt-controller");
     fdt_prop_u32(s, "#interrupt-cells", 1);
@@ -654,10 +656,6 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     fdt_prop_tab_u32(s, "reg", tab, 4);
     
     fdt_end_node(s); /* memory */
-
-    fdt_begin_node(s, "htif");
-    fdt_prop_str(s, "compatible", "ucb,htif0");
-    fdt_end_node(s); /* htif */
 
     fdt_begin_node(s, "soc");
     fdt_prop_u32(s, "#address-cells", 2);
@@ -716,7 +714,7 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
         fdt_prop_u32(s, "width", fb_dev->width);
         fdt_prop_u32(s, "height", fb_dev->height);
         fdt_prop_u32(s, "stride", fb_dev->stride);
-        fdt_prop_str(s, "format", "a8r8g8b8");
+        fdt_prop_str(s, "format", "r5g6b5");
         fdt_end_node(s); /* framebuffer */
     }
     
@@ -728,11 +726,6 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
         fdt_prop_tab_u64(s, "riscv,kernel-start", kernel_start);
         fdt_prop_tab_u64(s, "riscv,kernel-end", kernel_start + kernel_size);
     }
-    if (initrd_size > 0) {
-        fdt_prop_tab_u64(s, "linux,initrd-start", initrd_start);
-        fdt_prop_tab_u64(s, "linux,initrd-end", initrd_start + initrd_size);
-    }
-    
 
     fdt_end_node(s); /* chosen */
     
@@ -768,7 +761,6 @@ static void copy_bios(RISCVMachine *s, const uint8_t *buf, int buf_len,
     ram_ptr = get_ram_ptr(s, RAM_BASE_ADDR, TRUE);
     memcpy(ram_ptr, buf, buf_len);
 
-    kernel_base = 0;
     if (kernel_buf_len > 0) {
         /* copy the kernel if present */
         if (s->max_xlen == 32)
@@ -783,22 +775,9 @@ static void copy_bios(RISCVMachine *s, const uint8_t *buf, int buf_len,
         }
     }
 
-    initrd_base = 0;
-    if (initrd_buf_len > 0) {
-        /* same allocation as QEMU */
-        initrd_base = s->ram_size / 2;
-        if (initrd_base > (128 << 20))
-            initrd_base = 128 << 20;
-        memcpy(ram_ptr + initrd_base, initrd_buf, initrd_buf_len);
-        if (initrd_buf_len + initrd_base > s->ram_size) {
-            vm_error("initrd too big");
-            exit(1);
-        }
-    }
-    
     ram_ptr = get_ram_ptr(s, 0, TRUE);
     
-    fdt_addr = 0x1000 + 8 * 8;
+    fdt_addr = 0+ 8 * 8;
 
     riscv_build_fdt(s, ram_ptr + fdt_addr,
                     RAM_BASE_ADDR + kernel_base, kernel_buf_len,
@@ -807,12 +786,13 @@ static void copy_bios(RISCVMachine *s, const uint8_t *buf, int buf_len,
 
     /* jump_addr = 0x80000000 */
     
-    q = (uint32_t *)(ram_ptr + 0x1000);
-    q[0] = 0x297 + 0x80000000 - 0x1000; /* auipc t0, jump_addr */
+    q = (uint32_t *)(ram_ptr + 0);
+    q[0] = 0x01406283; /* lwu t0, 20(zero) */
     q[1] = 0x597; /* auipc a1, dtb */
     q[2] = 0x58593 + ((fdt_addr - 4) << 20); /* addi a1, a1, dtb */
     q[3] = 0xf1402573; /* csrr a0, mhartid */
     q[4] = 0x00028067; /* jalr zero, t0, jump_addr */
+    q[5] = 0x80000000; /* jump_addr */
 }
 
 static void riscv_flush_tlb_write_range(void *opaque, uint8_t *ram_addr,
@@ -989,26 +969,7 @@ static void riscv_machine_end(VirtMachine *s1)
 /* in ms */
 static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
 {
-    RISCVMachine *m = (RISCVMachine *)s1;
-    RISCVCPUState *s = m->cpu_state;
-    int64_t delay1;
-    
-    /* wait for an event: the only asynchronous event is the RTC timer */
-    if (!(riscv_cpu_get_mip(s) & MIP_MTIP)) {
-        delay1 = m->timecmp - rtc_get_time(m);
-        if (delay1 <= 0) {
-            riscv_cpu_set_mip(s, MIP_MTIP);
-            delay = 0;
-        } else {
-            /* convert delay to ms */
-            delay1 = delay1 / (RTC_FREQ / 1000);
-            if (delay1 < delay)
-                delay = delay1;
-        }
-    }
-    if (!riscv_cpu_get_power_down(s))
-        delay = 0;
-    return delay;
+    return 0;
 }
 
 static void riscv_machine_interp(VirtMachine *s1, int max_exec_cycle)

@@ -531,7 +531,7 @@ static EthernetDevice *slirp_open(void)
 
 #endif /* CONFIG_SLIRP */
 
-#define MAX_EXEC_CYCLE 500000
+#define MAX_EXEC_CYCLE 40000
 #define MAX_SLEEP_TIME 10 /* in ms */
 
 void virt_machine_run(VirtMachine *m)
@@ -811,10 +811,11 @@ int main(int argc, char **argv)
 #ifdef _WIN32
         fprintf(stderr, "Console not supported yet\n");
         exit(1);
-#else
-        p->console = console_init(allow_ctrlc);
-#endif
     }
+#else
+    }
+    p->console = console_init(allow_ctrlc);
+#endif
     p->rtc_real_time = TRUE;
 
     s = virt_machine_init(p);

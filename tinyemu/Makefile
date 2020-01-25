@@ -24,18 +24,19 @@
 
 # if set, network filesystem is enabled. libcurl and libcrypto
 # (openssl) must be installed.
-CONFIG_FS_NET=y
+#CONFIG_FS_NET=y
 # SDL support (optional)
 CONFIG_SDL=y
 # if set, compile the 128 bit emulator. Note: the 128 bit target does
 # not compile if gcc does not support the int128 type (32 bit hosts).
-CONFIG_INT128=y
+#CONFIG_INT128=y
 # build x86 emulator
-CONFIG_X86EMU=y
+#CONFIG_X86EMU=y
 # win32 build (not usable yet)
 #CONFIG_WIN32=y
 # user space network redirector
 CONFIG_SLIRP=y
+#CONFIG_9444_TRACE=y
 
 ifdef CONFIG_WIN32
 CROSS_PREFIX=i686-w64-mingw32-
@@ -45,19 +46,30 @@ CROSS_PREFIX=
 EXE=
 endif
 CC=$(CROSS_PREFIX)gcc
+CPP=$(CROSS_PREFIX)g++
 STRIP=$(CROSS_PREFIX)strip
-CFLAGS=-O2 -Wall -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
+CFLAGS=-Os -Wall -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
 CFLAGS+=-D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
-LDFLAGS=
+CFLAGS+=-I/usr/local/share/verilator/include/
+CFLAGS+=-flto -fno-stack-protector -fno-pic
+LDFLAGS=-flto -fno-stack-protector -no-pie
 
 bindir=/usr/local/bin
 INSTALL=install
 
-PROGS+= temu$(EXE)
+PROGS+= 9444-simulator$(EXE)
 ifndef CONFIG_WIN32
 ifdef CONFIG_FS_NET
 PROGS+=build_filelist splitimg
 endif
+endif
+
+ifdef CONFIG_9444_TRACE
+CFLAGS+=-DVCD_TRACE -Icpu_lib_trace/ 
+CPU_LIB=cpu_lib_trace/Vcpu__ALL.a /usr/local/share/verilator/include/verilated_vcd_c.cpp
+else
+CFLAGS+=-Icpu_lib/ 
+CPU_LIB=cpu_lib/Vcpu__ALL.a
 endif
 
 all: $(PROGS)
@@ -91,29 +103,16 @@ LDFLAGS+=-mwindows
 endif
 endif
 
-EMU_OBJS+=riscv_machine.o softfp.o riscv_cpu32.o riscv_cpu64.o
-ifdef CONFIG_INT128
-CFLAGS+=-DCONFIG_RISCV_MAX_XLEN=128
-EMU_OBJS+=riscv_cpu128.o
-else
+EMU_OBJS+=riscv_machine.o 9444_cpu.o
 CFLAGS+=-DCONFIG_RISCV_MAX_XLEN=64
-endif
+
 ifdef CONFIG_X86EMU
 CFLAGS+=-DCONFIG_X86EMU
 EMU_OBJS+=x86_cpu.o x86_machine.o ide.o ps2.o vmmouse.o pckbd.o vga.o
 endif
 
-temu$(EXE): $(EMU_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(EMU_LIBS)
-
-riscv_cpu32.o: riscv_cpu.c
-	$(CC) $(CFLAGS) -DMAX_XLEN=32 -c -o $@ $<
-
-riscv_cpu64.o: riscv_cpu.c
-	$(CC) $(CFLAGS) -DMAX_XLEN=64 -c -o $@ $<
-
-riscv_cpu128.o: riscv_cpu.c
-	$(CC) $(CFLAGS) -DMAX_XLEN=128 -c -o $@ $<
+9444-simulator$(EXE): $(EMU_OBJS)
+	$(CPP) $(LDFLAGS) -o $@ $^ $(EMU_LIBS) /usr/local/share/verilator/include/verilated.cpp $(CPU_LIB)
 
 build_filelist: build_filelist.o fs_utils.o cutils.o
 	$(CC) $(LDFLAGS) -o $@ $^ -lm
@@ -127,6 +126,9 @@ install: $(PROGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+%.o: %.cpp
+	$(CPP) $(CFLAGS) -faligned-new -c -o $@ $<
 
 clean:
 	rm -f *.o *.d *~ $(PROGS) slirp/*.o slirp/*.d slirp/*~
