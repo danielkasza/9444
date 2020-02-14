@@ -61,12 +61,14 @@ module FetchStage#(
     output                  instruction_addr_misaligned,
     /* Set if the instruction could not be fetched due to a cache miss. */
     output reg              instruction_cache_miss,
+    /* Set if the instruction is not yet ready. */
+    output reg              instruction_bubble,
     /* Virtual address of the instruction. */
     output reg [`XLEN-1:1]  instruction_vaddr = reset_vaddr[`XLEN-1:1],
     /* The instruction. */
     output [31:2]           instruction_word,
-    /* Predicted address of next instruction. */
-    input  [`XLEN-1:1]      predicted_vaddr,
+    /* Must be asserted if the current instruction is not done yet. */
+    input                   instruction_hold,
 
     /** REDIRECT PORT. **/
     /* If true, the signals below are used to redirect the CPU to a different instruction.
@@ -132,7 +134,7 @@ typedef struct packed {
 } cache_line_t;
 
 /* Cache lines. */
-(* rw_addr_collision = "yes" *) (* ram_style = "block" *) reg [$bits(cache_line_t)-1:0] cache_lines[(cache_line_count-1):0];
+(* ram_style = "block" *) reg [$bits(cache_line_t)-1:0] cache_lines[(cache_line_count-1):0];
 
 /* Index of cache line addressed by cache_port_addr. */
 wire [cache_line_log2count-1:0] cache_port_idx = cache_port_addr[5+cache_line_log2count-1:5];
@@ -231,16 +233,26 @@ end
 
 /* FIGURE OUT NEXT INSTRUCTION ADDRESS. *******************************************************************************/
 
+reg [`XLEN-1:1]  instruction_vaddr_next = reset_vaddr[`XLEN-1:1];
 always @(posedge clock) begin
     if (!stall) begin
         if (redirect) begin
             /* Execute stage requested redirection. */
             instruction_vaddr <= redirect_vaddr;
         end
+        else if (instruction_hold) begin
+            /* Decode stage is still working on the current instruction. */
+        end
+        else if (instruction_bubble) begin
+            /* We are in a bubble. We will fetch the instruction on the next cycle. */
+        end
         else begin
             /* Continue sequentially. */
-            instruction_vaddr <= predicted_vaddr;
+            instruction_vaddr <= instruction_vaddr + 2;
         end
+
+        /* Insert a bubble to avoid read-write collision on cache. */
+        instruction_bubble <= cache_port_set;
     end
 end
 

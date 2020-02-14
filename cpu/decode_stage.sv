@@ -41,12 +41,14 @@ module DecodeStage(
     input                           instruction_addr_misaligned_in,
     /* Set if the instruction could not be fetched due to a cache miss. */
     input                           instruction_cache_miss_in,
+    /* Set if the instruction is not yet ready. */
+    input                           instruction_bubble,
     /* Virtual address of the instruction. */
     input  [`XLEN-1:1]              instruction_vaddr_in,
     /* The instruction. */
     input  [31:2]                   instruction_word,
-    /* Predicted address of next instruction. */
-    output reg [`XLEN-1:1]          predicted_vaddr,
+    /* Must be asserted if the current instruction is not done yet. */
+    output                          instruction_hold,
 
     /** CONNECTIONS TO EXECUTE STAGE. **/
     output reg                      instruction_addr_misaligned_out = 0,
@@ -189,6 +191,8 @@ always @(posedge clock) begin
     end
 end
 
+assign instruction_hold = !instruction_done;
+
 /* DECODE NEXT INSTRUCTIONS. ******************************************************************************************/
 reg                         instruction_illegal;
 reg                         e_call;
@@ -216,13 +220,6 @@ reg [`XLEN-1:0]             a_comp;
 reg [`XLEN-1:0]             b_comp;
 reg                         is_branch;
 reg                         wait_for_interrupt;
-
-/* These affect the return address stack. */
-reg                         is_call;
-reg                         is_ret;
-
-/* This affects the branch predictor. */
-reg                         is_conditional_branch;
 
 ireg_file::op_t             ireg_op;
 ireg::ireg_t                ireg_sel;
@@ -328,21 +325,12 @@ endcase
 endfunction
 
 /* Macro for conditional branches. */
-`define CONDITIONAL_BRANCH(_comp_op_)                                       \
-        begin                                                               \
-            a = {instruction_vaddr_in, 1'b0};                               \
-            is_branch = 1;                                                  \
-            is_conditional_branch = 1;                                      \
-            if (likely) begin                                               \
-                comparator_op = invert_condition(comparator::_comp_op_);    \
-                b = 4;                                                      \
-                predicted_vaddr =                                           \
-                    instruction_vaddr_in + b_immediate[`XLEN-1:1];          \
-            end                                                             \
-            else begin                                                      \
-                comparator_op = comparator::_comp_op_;                      \
-                b = b_immediate;                                            \
-            end                                                             \
+`define CONDITIONAL_BRANCH(_comp_op_)                           \
+        begin                                                   \
+            a = {instruction_vaddr_in, 1'b0};                   \
+            is_branch = 1;                                      \
+            comparator_op = comparator::_comp_op_;              \
+            b = b_immediate;                                    \
         end
 
 /* Macro for load instructions. */
@@ -422,7 +410,6 @@ wire [31:0] reconstructed_instruction_word = {instruction_word, 2'b11};
 always_comb begin
     /* Set some reasonable defaults. */
     instruction_done = 1;
-    predicted_vaddr = instruction_vaddr_in + 2;
     instruction_illegal = 0;
     e_call = 0;
     e_break = 0;
@@ -451,15 +438,10 @@ always_comb begin
     is_branch = 0;
     wait_for_interrupt = 0;
 
-    is_call = 0;
-    is_ret  = 0;
-
-    is_conditional_branch = 0;
-
     ireg_op  = ireg_file::NOP;
     ireg_sel = ireg::x;
 
-    if (redirect)  begin
+    if (redirect || instruction_bubble)  begin
         /* Nothing to do. The defaults are already a NOP. */
     end
     else if (instruction_cache_miss_in) begin
@@ -525,33 +507,12 @@ always_comb begin
         /* -- unconditional jumps. */
         opcodes::JAL:
             begin
-                /* This jump is resolved by predicting the correct address.
-                 * The execute stage is used only to save the return address by
-                 * calculating it using the ALU.
-                 */
-                alu_mul_div_shifter_op = alu::ADD;
-                result_select = execute::ALU;
+                comparator_op = comparator::TRUE;
+                result_select = execute::RETURN_ADDRESS;
                 save_result_to_gpr = 1;
                 a = {instruction_vaddr_in, 1'b0};
-                b = 4;
-                predicted_vaddr = instruction_vaddr_in + j_immediate[`XLEN-1:1];
-                is_call = 1;
-            end
-        opcodes::RET:
-            begin
-                /* Predict the saved return address. */
-                predicted_vaddr = predicted_return_address[`XLEN-1:1];
-                /* Setup a conditional branch that will jump to the correct address on misprediction.
-                 * Try to keep it similar to JALR.
-                 */
-                comparator_op = comparator::NE;
-                result_select = execute::RETURN_ADDRESS;
-                b = i_immediate; /* always 0. */
-                b_comp =  predicted_return_address;
-                save_result_to_gpr = 1;
+                b = j_immediate;
                 is_branch = 1;
-                is_call = 1;
-                is_ret  = 1;
             end
         opcodes::JALR:
             begin
@@ -560,7 +521,6 @@ always_comb begin
                 save_result_to_gpr = 1;
                 b = i_immediate;
                 is_branch = 1;
-                is_call = 1;
             end
         /* -- conditional branches. */
         opcodes::BEQ:   `CONDITIONAL_BRANCH(EQ)
@@ -926,104 +886,6 @@ always_comb begin
         /* Nothing matched. */
         default: instruction_illegal = 1;
     endcase
-
-    if (!instruction_done) begin
-        predicted_vaddr = instruction_vaddr_in;
-    end
-end
-
-/* DYNAMIC BRANCH PREDICTOR. *******************************************************************************************
- * Saturating counters are used to predict the outcome of conditional branches.
- * The counter is selected using the bottom bits of the instruction address.
- * The counter can have 4 values:
- *    - 0,1: unlikely
- *    - 2,3: likely
- */
-
-parameter int predictor_counter_log2count = 10;
-localparam int predictor_counter_count = 1 << predictor_counter_log2count;
-
-reg [1:0] predictor_counters [predictor_counter_count-1:0];
-
-/* Initially we will treat them all as unlikely. */
-initial begin
-    for (int i=0; i<predictor_counter_count; i++) begin
-        predictor_counters[i] = 0;
-    end
-end
-
-/* Find index for instruction being decoded and instruction being executed. */
-wire [predictor_counter_log2count-1:0] predictor_decode_idx  = instruction_vaddr_in [predictor_counter_log2count+1:2];
-wire [predictor_counter_log2count-1:0] predictor_execute_idx = instruction_vaddr_out[predictor_counter_log2count+1:2];
-
-/* Output likely for instruction being decoded. */
-reg likely;
-always_comb begin
-    case(predictor_counters[predictor_decode_idx])
-        0,1: likely = 0;
-        2,3: likely = 1;
-    endcase
-end
-
-/* Update counter if the instructions being executed is a branch.
- * Weakness: we are not accounting for redirects caused by exceptions here, so the implementation is slightly biased
- * toward taken.
- * Weakness: if the same counter is used by the instruction being decoded and executed at the same time, the counter
- * value is not bypassed to the decoded instruction.
- */
-reg is_conditional_branch_execute = 0;
-always @(posedge clock) begin
-    if (!stall) begin
-        is_conditional_branch_execute <= is_conditional_branch;
-
-        if (is_conditional_branch_execute) begin
-            reg [1:0] counter_value = predictor_counters[predictor_execute_idx];
-            
-            if (redirect) begin
-                /* Misprediction happened. */
-                case (counter_value)
-                    0: counter_value = 1;
-                    1: counter_value = 2;
-                    2: counter_value = 1;
-                    3: counter_value = 2;
-                endcase
-            end
-            else begin
-                /* Was predicted correctly. */
-                case (counter_value)
-                    0: counter_value = 0;
-                    1: counter_value = 0;
-                    2: counter_value = 3;
-                    3: counter_value = 3;
-                endcase
-            end
-
-            predictor_counters[predictor_execute_idx] <= counter_value;
-        end
-    end
-end
-
-/* SAVE RETURN ADDRESS. ***********************************************************************************************/
-reg  [ 1:0]         ret_addr_stack_ptr = 0;
-reg  [`VLEN-1:2]    ret_addr_stack [3:0];
-
-wire [`XLEN-1:0]    predicted_return_address =
-    {{(`XLEN-`VLEN){ret_addr_stack[ret_addr_stack_ptr][`VLEN-1]}}, ret_addr_stack[ret_addr_stack_ptr], 2'b0};
-
-always @(posedge clock) begin
-    if (!stall) begin
-        /* If this is a return instruction, pop the address. */
-        if (is_ret) begin
-            ret_addr_stack_ptr <= ret_addr_stack_ptr - 1;
-        end
-        /* If the return address is saved and this is an unconditional branch,
-         * save the next sequential address on the return address stack.
-         */
-        else if (is_call && (rd != 0)) begin
-            ret_addr_stack_ptr <= ret_addr_stack_ptr + 1;
-            ret_addr_stack[ret_addr_stack_ptr + 1] <= instruction_vaddr_in[`VLEN-1:2] + 1;
-        end
-    end
 end
 
 /* OUTPUT NEXT INSTRUCTION. *******************************************************************************************/
@@ -1058,11 +920,11 @@ always @(posedge clock) begin
         b_comp_out                      <= b_comp;
         is_branch_out                   <= is_branch;
         wait_for_interrupt_out          <= wait_for_interrupt;
-        suppress_interrupts             <= (instruction_step != 0) || redirect;
+        suppress_interrupts             <= (instruction_step != 0) || redirect || instruction_bubble;
 
         ireg_op_out                     <= ireg_op;
         ireg_sel_out                    <= ireg_sel;
-        instruction_word_out            <= instruction_word;
+        instruction_word_out            <= instruction_word[31:2];
     end
 end
 

@@ -54,7 +54,7 @@ module IRegFile(
     output                  s_tie,
     /* Interrupt lines. */
     output                  m_timer,
-    output                  s_timer,
+    output reg              s_timer,
     input                   m_interrupt,
     input                   s_interrupt,
 
@@ -332,7 +332,9 @@ end
 
 /* Supervisor's timer. */
 reg [63:0] supervisor_next_event_cycle = 0;
-assign     s_timer = (cycle_counter >= supervisor_next_event_cycle);
+always @(posedge clock) begin
+    s_timer <= (cycle_counter >= supervisor_next_event_cycle);
+end
 
 // TODO: machine mode timer
 assign     m_timer = 0;

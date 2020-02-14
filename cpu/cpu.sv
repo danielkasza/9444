@@ -131,9 +131,10 @@ MMU MMU(
 /* Connections to decode stage. */
 wire                fetch_instruction_addr_misaligned;
 wire                fetch_instruction_cache_miss;
+wire                fetch_instruction_bubble;
 wire [`XLEN-1:1]    fetch_instruction_vaddr;
 wire [31:2]         fetch_instruction_word;
-wire [`XLEN-1:1]    fetch_predicted_vaddr;
+wire                fetch_instruction_hold;
 /* Cache port. */
 wire [`VLEN-1:5]    fetch_cache_port_addr;
 wire                fetch_cache_port_set;
@@ -150,9 +151,10 @@ FetchStage FetchStage(
     
     .instruction_addr_misaligned(fetch_instruction_addr_misaligned),
     .instruction_cache_miss(fetch_instruction_cache_miss),
+    .instruction_bubble(fetch_instruction_bubble),
     .instruction_vaddr(fetch_instruction_vaddr),
     .instruction_word(fetch_instruction_word),
-    .predicted_vaddr(fetch_predicted_vaddr),
+    .instruction_hold(fetch_instruction_hold),
 
     .redirect(redirect),
     .redirect_vaddr(redirect_vaddr),
@@ -206,9 +208,10 @@ DecodeStage DecodeStage(
 
     .instruction_addr_misaligned_in(fetch_instruction_addr_misaligned),
     .instruction_cache_miss_in(fetch_instruction_cache_miss),
+    .instruction_bubble(fetch_instruction_bubble),
     .instruction_vaddr_in(fetch_instruction_vaddr),
     .instruction_word(fetch_instruction_word),
-    .predicted_vaddr(fetch_predicted_vaddr),
+    .instruction_hold(fetch_instruction_hold),
 
     .instruction_addr_misaligned_out(decode_instruction_addr_misaligned),
     .instruction_illegal_out(decode_instruction_illegal),
