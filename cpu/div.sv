@@ -44,7 +44,6 @@ module Div#(
     input      [DIVLEN-1:0] dividend,
     input      [DIVLEN-1:0] divisor,
     output                  done,
-    output                  match,
     output reg [DIVLEN-1:0] q,
     output reg [DIVLEN-1:0] r
 );
@@ -96,7 +95,6 @@ always_comb begin
 end
 
 /* Internal state. */
-reg [DIVLEN-1:0] sr_match; /* Saved for matching. */
 reg [DIVLEN*2-1:0] sr;
 reg [DIVLEN-1:0] d;
 reg q_neg;
@@ -119,7 +117,6 @@ end
 always @(posedge clock) begin
     if (start) begin
         /* start is asserted, load initial values. */
-        sr_match <= sr_init;
         sr <= {{DIVLEN{1'b0}}, sr_init};
         d  <= d_init;
         q_neg <= q_neg_init;
@@ -141,13 +138,6 @@ always_comb begin
     r = r_neg ? (-r_unsigned) : r_unsigned;
     q = q_neg ? (-q_unsigned) : q_unsigned;
 end
-
-/* Combinational output.
-* This will be asserted when the outputs are already valid, so it is not neccessary to start a new operation.
-* This allows the EX stage to avoid blocking on the divider when DIV and REM instructions follow each other with
-* identical arguments.
-*/
-assign match = (sr_init == sr_match) && (d == d_init) && (r_neg == r_neg_init) && (q_neg == q_neg_init);
 
 endmodule
 

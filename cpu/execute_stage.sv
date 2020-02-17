@@ -285,16 +285,13 @@ Comparator Comparator(
  */
 
 wire            div_done  = div_done_32 && div_done_64;
-wire            div_match = is_word_op ? div_match_32      : div_match_64;
 wire [`XLEN-1:0]    div_q = is_word_op ? {32'b0, div_q_32} : div_q_64;
 wire [`XLEN-1:0]    div_r = is_word_op ? {32'b0, div_r_32} : div_r_64;
-wire            div_start = is_word_op ? div_start_32      : div_start_64;
-wire            div_stall = (is_div_op && (!div_done || div_start));
+wire            div_stall = (is_div_op && (!div_done || !stalled));
 
 /* 64b instance. */
 wire div_done_64;
-wire div_match_64;
-wire div_start_64 = (is_div_op && !div_match_64 && div_done_64 && !exception_pending && !is_word_op);
+wire div_start_64 = (is_div_op && !stalled && !exception_pending && !is_word_op);
 
 wire [`XLEN-1:0] div_q_64;
 wire [`XLEN-1:0] div_r_64;
@@ -306,15 +303,13 @@ Div #(64) Div64(
     .dividend(a),
     .divisor(b),
     .done(div_done_64),
-    .match(div_match_64),
     .q(div_q_64),
     .r(div_r_64)
 );
 
 /* 32b instance. */
 wire div_done_32;
-wire div_match_32;
-wire div_start_32 = (is_div_op && !div_match_32 && div_done_32 && !exception_pending && is_word_op);
+wire div_start_32 = (is_div_op && !stalled && !exception_pending && is_word_op);
 
 wire [`XLEN/2-1:0] div_q_32;
 wire [`XLEN/2-1:0] div_r_32;
@@ -326,7 +321,6 @@ Div #(32) Div32(
     .dividend(a[`XLEN/2-1:0]),
     .divisor(b[`XLEN/2-1:0]),
     .done(div_done_32),
-    .match(div_match_32),
     .q(div_q_32),
     .r(div_r_32)
 );
