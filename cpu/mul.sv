@@ -32,6 +32,7 @@
 /* Multiplier implementation. */
 module Mul(
     input                   clock,
+    input                   enable,
     input      mul::op_t    op,
     input                   is_word_op,
     input      [`XLEN-1:0]  a,
@@ -47,9 +48,14 @@ reg signed [(`XLEN*2)-1:0] s_result;
 reg signed [(`XLEN*2)-1:0] suresult;
 
 always @(posedge clock) begin
-    u_result <= a*b;
-    s_result <= $signed(a)*$signed(b);
-    suresult <= $signed(a)*$signed({1'b0, b});
+    /* The enable signal was added to improve simulation performance.
+     * It is not necessary for the correct operation of the hardware.
+     */
+    if (enable) begin
+        u_result <= a*b;
+        s_result <= $signed(a)*$signed(b);
+        suresult <= $signed(a)*$signed({1'b0, b});
+    end
 end
 
 always_comb begin

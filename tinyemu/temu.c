@@ -531,7 +531,7 @@ static EthernetDevice *slirp_open(void)
 
 #endif /* CONFIG_SLIRP */
 
-#define MAX_EXEC_CYCLE 40000
+#define MAX_EXEC_CYCLE 100000
 #define MAX_SLEEP_TIME 10 /* in ms */
 
 void virt_machine_run(VirtMachine *m)

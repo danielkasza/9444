@@ -331,6 +331,7 @@ wire [`XLEN-1:0] mul_result;
 
 Mul Mul(
     .clock(clock),
+    .enable(result_select == execute::MUL && save_result_to_gpr),
     .op(alu_mul_div_shifter_op[1:0]),
     .is_word_op(is_word_op),
     .a(a),
