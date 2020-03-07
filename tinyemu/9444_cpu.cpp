@@ -357,3 +357,8 @@ RISCVCPUState *riscv_cpu_init(PhysMemoryMap *_mem_map, int max_xlen) {
 
     return (RISCVCPUState*)&common_state;
 }
+
+/* Verilator requires this now. */
+double sc_time_stamp() {
+    return (double)cycle;
+}
