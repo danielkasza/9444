@@ -149,9 +149,9 @@ wire [2:0] bucket_idx = m_paddr_d[$clog2(cache_line_size)+2:$clog2(cache_line_si
 wire cache_hit  = (cache_line.valid) && (cache_line.paddr == paddr_expected);
 
 /* Figure out if we can ack the transaction yet.
- * Reads can be acked as soon as we have a cache hit.
- * Writes can be acked if the AXI interface is ready to accept a write transaction, and we have the right cache line
- * selected.
+ * Reads can be acknowledged as soon as we have a cache hit.
+ * Writes can be acknowledged if the AXI interface is ready to accept a write transaction, and we have the right cache
+ * line selected.
  */
 reg ack_write;
 always_comb begin

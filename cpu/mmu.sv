@@ -45,7 +45,7 @@ module MMU(
     input                   clock,
 
     /* Set if SUM bit is set.
-     * If set, user pages are accessesible in supervisor mode.
+     * If set, user pages are accessible in supervisor mode.
      */
     input                   sum,
     /* Set if executing in user mode. */

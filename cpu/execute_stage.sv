@@ -277,7 +277,7 @@ Comparator Comparator(
 /* DIVIDER INSTANCES. **************************************************************************************************
  *
  * Separate dividers are used for dword and word sized calculations.
- * This may be inefficient, but it keeps the inidividual dividers simple and it allows us to cache two different
+ * This may be inefficient, but it keeps the individual dividers simple and it allows us to cache two different
  * results at the same time.
  *
  * This may change in the future. I am considering alternative divider design to address this issue and to speed up
@@ -379,7 +379,7 @@ assign mmu_vaddr = add_result[`VLEN-1:0];
 wire vaddr_fault = (add_result[`XLEN-1:`VLEN] != {(`XLEN-`VLEN){add_result[`VLEN-1]}});
 
 /* Are we done yet?
- * If this is store-conditional, and the reservation was lost, then we are done without a memory acces.
+ * If this is store-conditional, and the reservation was lost, then we are done without a memory access.
  * Otherwise, wait for the memory to acknowledge the access.
  */
 wire mem_done = mem_ack || (is_sc && !memory_reserve_state);

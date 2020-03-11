@@ -23,7 +23,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* 9444 CPU Multiplier Unit. */
+/* 9444 CPU Multiplier Unit.
+ *
+ * Internally, the multiplier always produces a 128b result with a 1 cycle latency.
+ * The required 64b of the result are selected after that cycle.
+ * While this may look inefficient, it seems to generate the best results with Xilinx tools.
+ *
+ * Historically, this module was capable of outputting the result combinationally.
+ * Unfortunately, multiplication is a relatively slow operation, and this became the critical path in the design.
+ * With the 1 cycle latency, this is no longer the critical path.
+ */
 `ifndef _MUL_SV
 `define _MUL_SV
 
