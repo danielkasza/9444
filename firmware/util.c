@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, 2020, Daniel Kasza
+/* Copyright (c) 2020, Daniel Kasza
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -23,38 +23,58 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include "banner.h"
 #include "util.h"
+#include <stddef.h>
 
-#define KERNEL_START  0x80200000
-#define DVTREE_START (KERNEL_START + (16*1024*1024))
-#define DVTREE_OURS  (0x40)
-#define DVTREE_SIZE  (32*1024)
-
-#define HTIF_BASE_ADDR 0x40008000
-
-void printc(char c) {
-    *(volatile uint32_t*)(HTIF_BASE_ADDR + 0) = c;
-    *(volatile uint32_t*)(HTIF_BASE_ADDR + 4) = 0x01010000;
+void printstr(const char *str) {
+    /* Write data to emulated HTIF. */
+    while (*str) {
+        char c = *str;
+        str++;
+        
+        if (c == '\n') {
+            printc('\r');
+        }
+        
+        printc(c);
+    }
 }
 
-int main() {
-    printstr(banner);
+char hex_table[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+void printx32(uint32_t val) {
+    unsigned i;
+    for (i=0; i<8; i++) {
+        printc(hex_table[(val >> (28 - (4*i))) & 0xF]);
+    }
+}
+void printx64(uint64_t val) {
+    unsigned i;
+    for (i=0; i<16; i++) {
+        printc(hex_table[(val >> (60 - (4*i))) & 0xF]);
+    }
+}
 
-    /* Copy the DTB closer to the kernel. */
-    void *dtb_addr = (void*)DVTREE_START;
-    memcpy(
-        dtb_addr,
-        (void*)DVTREE_OURS,
-        DVTREE_SIZE
-    );
+void printlx32(const char *label, uint32_t val) {
+    printstr(label);
+    printstr(": ");
+    printx32(val);
+    printstr("\n");
+}
 
-    start_supervisor(KERNEL_START, (uint64_t)dtb_addr);
+ void printlx64(const char *label, uint64_t val) {
+    printstr(label);
+    printstr(": ");
+    printx64(val);
+    printstr("\n");
+}
 
-    for(;;);
-
-    return 1;
+void check_str_result(const char *result) {
+    if (result != NULL) {
+        printstr("FAILED: ");
+        printstr(result);
+        printstr("\n");
+        for(;;);
+    } else {
+        printstr("DONE!\n");
+    }
 }

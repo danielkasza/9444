@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, 2020, Daniel Kasza
+/* Copyright (c) 2020, Daniel Kasza
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -23,38 +23,33 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
 #include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include "banner.h"
-#include "util.h"
 
-#define KERNEL_START  0x80200000
-#define DVTREE_START (KERNEL_START + (16*1024*1024))
-#define DVTREE_OURS  (0x40)
-#define DVTREE_SIZE  (32*1024)
+/* Print a string. */
+void printstr(const char *str);
 
-#define HTIF_BASE_ADDR 0x40008000
+/* Print a character.
+ * This function must be implemented by the platform specific code.
+ */
+void printc(char c);
 
-void printc(char c) {
-    *(volatile uint32_t*)(HTIF_BASE_ADDR + 0) = c;
-    *(volatile uint32_t*)(HTIF_BASE_ADDR + 4) = 0x01010000;
-}
+/* Print hexadecimal numbers. */
+void printx32(uint32_t val);
+void printx64(uint64_t val);
 
-int main() {
-    printstr(banner);
+/* Print hexadecimal numbers with a label. */
+void printlx32(const char *label, uint32_t val);
+void printlx64(const char *label, uint64_t val);
 
-    /* Copy the DTB closer to the kernel. */
-    void *dtb_addr = (void*)DVTREE_START;
-    memcpy(
-        dtb_addr,
-        (void*)DVTREE_OURS,
-        DVTREE_SIZE
-    );
+/* Check string error result.
+ * If result is NULL, this function prints "DONE\n" and returns.
+ * Otherwise the function prints "FAILED: " followed by the result, and then spins forever.
+ */
+void check_str_result(const char *result);
 
-    start_supervisor(KERNEL_START, (uint64_t)dtb_addr);
-
-    for(;;);
-
-    return 1;
-}
+/* Start the supervisor for the first time.
+ * This is implemented in init.s.
+ */
+extern void start_supervisor(uint64_t kernel_addr, uint64_t dtb_addr);

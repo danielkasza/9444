@@ -35,6 +35,8 @@ uint64_t spi_base = 0;
 #define SPICR       (*(volatile uint32_t*)(spi_base + 0x60))
 /* SPI status register. */
 #define SPISR       (*(volatile uint32_t*)(spi_base + 0x64))
+#define SPISR_RX_EMPTY (1U<<0)
+#define SPISR_TX_EMPTY (1U<<2)
 /* SPI data transmit register. */
 #define SPIDTR      (*(volatile uint32_t*)(spi_base + 0x68))
 /* SPI data receive register. */
@@ -79,10 +81,42 @@ unsigned char spi_driver_xfer(unsigned char out) {
     SPIDTR = out;
 
     /* Wait for transmit FIFO to be empty and receive FIFO to contain data. */
-    while ((SPISR & 0x5) != 0x4);
+    while ((SPISR & (SPISR_RX_EMPTY | SPISR_TX_EMPTY)) != SPISR_TX_EMPTY);
 
     /* Return data from receive register. */
     return SPIDRR;
+}
+
+void spi_driver_receive_n(void *buffer, unsigned n) {
+    unsigned char *b = (unsigned char*)buffer;
+
+    /* This function assumes that the SPI FIFO is enabled, so we can put at least two bytes in the transmit FIFO at a
+     * time. The benefit of this is that the controller can handle the second byte while the CPU is pulling out the
+     * first byte from the receive FIFO.
+     * Note: we know that n is at least two.
+     */
+    
+    /* Start the first two transfers. */
+    SPIDTR = 0xFF;
+    SPIDTR = 0xFF;
+
+    /* Read the received bytes. */
+    while (n) {
+        /* Wait for the receive FIFO to contain data. */
+        while(SPISR & SPISR_RX_EMPTY);
+
+        /* Get the byte. */
+        *b = SPIDRR;
+        n--;
+        b++;
+
+        /* If there is more than one byte left to receive, start another transfer.
+         * If there is only one byte left, the transfer is already in progress.
+         */
+        if (n > 1) {
+            SPIDTR = 0xFF;
+        }
+    }
 }
 
 void spi_driver_select(bool select) {

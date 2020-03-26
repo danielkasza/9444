@@ -25,6 +25,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # Combine kernel image and dtb and put a header on it, so it can be loaded by the firmware from a memory card.
+# Note: this is only needed if the platform does not suport Ext2.
 #
 # Usage: ./mk9444image.py image-description kernel-image dtb load-address-hex output-file
 

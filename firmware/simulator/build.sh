@@ -12,6 +12,6 @@ riscv64-unknown-elf-gcc                                                         
     -Wl,-Ttext=0x80000100,--section-start=.init=0x80000000                      \
     -ffreestanding                                                              \
     -I..                                                                        \
-    ../init.S main.c ../banner.c
+    ../init.S main.c ../banner.c ../util.c ../exception.c
 
 riscv64-unknown-elf-objcopy -O binary "firmware.elf" "firmware.bin"

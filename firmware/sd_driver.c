@@ -115,10 +115,10 @@ char *sd_driver_init(void) {
         sd_select(false);
 
         if (result == 0x00) {
-            // Card is ready!
+            /* Card is ready! */
             break;
         } else if (result == 0x01) {
-            // Card needs more time
+            /* Card needs more time... */
         } else {
             return "Unexpected response from card, expected 0x00 or 0x01 after ACMD41";
         }
@@ -152,10 +152,7 @@ static char *sd_get_next_block(void *buffer) {
     }
     
     /* Read the payload. */
-    unsigned i;
-    for (i=0; i<512; i++) {
-        b[i] = just_rx();
-    }
+    spi_driver_receive_n(buffer, 512);
 
     /* Skip over 16b CRC. */
     (void)just_rx();

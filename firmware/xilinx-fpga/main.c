@@ -26,92 +26,34 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include "util.h"
 #include "spi_driver.h"
 #include "sd_driver.h"
-#include "bootblock.h"
 #include "banner.h"
+#include "ext2.h"
 
 #define UART_TX_FIFO                                ((volatile uint32_t*)0x100000004)
 #define UART_STATUS                                 ((volatile uint32_t*)0x100000008)
 #define UART_STATUS_TX_FULL                         (1U<<3)
 
-#define DDR3_MEMORY                                 ((volatile uint64_t*)0x80000000)
+#define DDR3_MEMORY                                 ((uint64_t)0x80000000)
+#define KERNEL_SIZE_MAX                             (32*1024*1024)
+#define DTB_SIZE_MAX                                ( 1*1024*1024)
 
-#define CLOCK_HZ                                    (25*1000*1000)
+/* Path of kernel image to load. */
+const char *kernel_path[]       = { "boot", "Image", NULL };
+const char *dtb_override_path[] = { "boot", "override.dtb", NULL };
 
-#define BOOTBLOCK_NUMBER                            2048
+/* The device tree. */
+extern unsigned char genesys2_dtb[];
+extern int genesys2_dtb_len;
 
-static void printc(char c) {
+void printc(char c) {
     /* Wait for space in the TX FIFO. */
     while (*UART_STATUS & UART_STATUS_TX_FULL);
     /* Place character in FIFO to send. */
     *UART_TX_FIFO = c;
 }
-
-// TODO: move print functions to their own module
-
-void printstr(char *str) {
-    /* Write data to emulated HTIF. */
-    while (*str) {
-        char c = *str;
-        str++;
-        
-        if (c == '\n') {
-            printc('\r');
-        }
-        
-        printc(c);
-    }
-}
-
-static char hex_table[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-static void printx32(uint32_t val) {
-    unsigned i;
-    for (i=0; i<8; i++) {
-        printc(hex_table[(val >> (28 - (4*i))) & 0xF]);
-    }
-}
-static void printx64(uint64_t val) {
-    unsigned i;
-    for (i=0; i<16; i++) {
-        printc(hex_table[(val >> (60 - (4*i))) & 0xF]);
-    }
-}
-
-static void printlx32(char *label, uint32_t val) {
-    printstr(label);
-    printstr(": ");
-    printx32(val);
-    printstr("\n");
-}
-
-static void printlx64(char *label, uint64_t val) {
-    printstr(label);
-    printstr(": ");
-    printx64(val);
-    printstr("\n");
-}
-
-extern void start_supervisor(uint64_t kernel_addr, uint64_t dtb_addr);
-
-static void check_str_result(char *result) {
-    if (result != NULL) {
-        printstr("FAILED: ");
-        printstr(result);
-        printstr("\n");
-        for(;;);
-    } else {
-        printstr("DONE!\n");
-    }
-}
-
-static uint64_t get_cycle(void) {
-    uint64_t result;
-    asm("csrr %[result], cycle" : [result] "=r" (result) ::);
-    return result;
-}
-
-static bootblock_t bootblock;
 
 static void progress_function(uint32_t done) {
     if (done % 1024 == 0) {
@@ -119,8 +61,13 @@ static void progress_function(uint32_t done) {
     }
 }
 
+static const char *ext2_disk_access(void *context, uint32_t first, uint32_t count, uint8_t *buffer) {
+    return sd_driver_read_sectors(first, count, (void*)buffer, progress_function);
+}
+
 int main() {
-    char *result;
+    const char *result;
+    ext2_inode_t inode = { 0 };
 
     printstr(banner);
     
@@ -132,83 +79,67 @@ int main() {
     result = sd_driver_init();
     check_str_result(result);
 
-    printstr("Reading boot block from sector 0x");
-    printx32(BOOTBLOCK_NUMBER);
-    printstr("...");
-    result = sd_driver_read_sector(BOOTBLOCK_NUMBER, &bootblock);
+    printstr("Initializing Ext2 filesystem...");
+    ext2_fs_t fs = { 0 };
+    result = ext2_open_fs(
+        ext2_disk_access, NULL,
+        (void*)(DDR3_MEMORY + KERNEL_SIZE_MAX + DTB_SIZE_MAX),
+        (EXT2_FS_CACHE_BLOCKS_COUNT_MAX * 4096),
+        &fs
+    );
     check_str_result(result);
 
-    if (bootblock.magic != BOOTBLOCK_MAGIC) {
-        printstr("BOOT FAILED: incorrect bootblock magic number!");
-        for(;;);
+    printstr("Opening kernel image...");
+    result = ext2_get_inode_by_path(&fs, kernel_path, &inode);
+    check_str_result(result);
+
+    /* Check the size of kernel image. */
+    if (inode.size > KERNEL_SIZE_MAX) {
+        check_str_result("kernel image is too large");
     }
 
-    printstr("Found boot image: ");
-    bootblock.description[255] = '\0';
-    printstr(bootblock.description);
-    printstr("\n");
-    printlx64("sector_count", bootblock.sector_count);
-    printlx64("load_addr", bootblock.load_addr);
-    printlx64("entry_addr", bootblock.entry_addr);
-    printlx64("dtb_addr", bootblock.dtb_addr);
-
-    printstr("Loading image..");
-    result = sd_driver_read_sectors(BOOTBLOCK_NUMBER+1, bootblock.sector_count, (void*)bootblock.load_addr, progress_function);
+    printstr("Loading kernel image...");
+    result = ext2_read(
+        &fs, &inode,
+        0, inode.size,
+        (uint8_t*)DDR3_MEMORY
+    );
     check_str_result(result);
 
-    printstr("Starting supervisor...\n");
+    /* Copy the DTB to the cache line following the kernel image. */
+    uint64_t dtb_addr = (((DDR3_MEMORY + inode.size + 63) / 64) * 64);
+    memcpy((void*)dtb_addr, genesys2_dtb, genesys2_dtb_len);
 
-    start_supervisor(bootblock.entry_addr, bootblock.dtb_addr);
+    /* Check to see if there is an override DTB.
+     * This feature exists for development. It is easier to change a file on the card than to rebuild the FPGA bitstream
+     * when making device tree changes.
+     */
+    printstr("Checking for DTB override...");
+    result = ext2_get_inode_by_path(&fs, dtb_override_path, &inode);
+    if (result == NULL) {
+        if (inode.size > DTB_SIZE_MAX) {
+            check_str_result("dtb is too large");
+        }
+        printstr("found it!\n");
+
+        printstr("Loading DTB...");
+        result = ext2_read(
+            &fs, &inode,
+            0, inode.size,
+            (uint8_t*)dtb_addr
+        );
+        check_str_result(result);
+    } else {
+        printstr("none\n");
+    }
+
+    printstr("Starting kernel...\n");
+    start_supervisor(DDR3_MEMORY, dtb_addr);
 
     for(;;);
 
     return 1;
 }
 
-static uint64_t get_mepc(void) {
-    uint64_t result;
-    asm("csrr %[result], mepc" : [result] "=r" (result) ::);
-    return result;
-}
-
-static void set_mepc(uint64_t mepc) {
-    asm("csrw mepc, %[mepc]" :: [mepc] "r" (mepc) :);
-}
-
-static void ecall_exception(uint64_t sbi_arg0, uint64_t sbi_arg1, uint64_t sbi_ext) {
-    uint64_t mepc = get_mepc();
-
-    if (sbi_ext == 0) {
-        /* void sbi_set_timer(uint64_t stime_value) */
-        asm("csrw 0x5C0, %[sbi_arg0]" :: [sbi_arg0] "r" (sbi_arg0) :);
-    } else if (sbi_ext == 1) {
-        /* void sbi_console_putchar(int ch) */
-        printc(sbi_arg0);
-    } else {
-        printstr("M: unexpected call from S-mode\n");
-        printlx64("mepc", mepc);
-        printlx64("sbi_arg0", sbi_arg0);
-        printlx64("sbi_arg1", sbi_arg1);
-        printlx64("sbi_ext", sbi_ext);
-        for(;;);
-    }
-
-    /* Skip over the ecall instruction. */
-    set_mepc(get_mepc() + 4);
-}
-
-void handle_exception(uint64_t sbi_arg0, uint64_t sbi_arg1, uint64_t sbi_ext, uint32_t mcause) {
-    switch (mcause) {
-        case 9: /* Environment call from S-mode. */
-            ecall_exception(sbi_arg0, sbi_arg1, sbi_ext);
-            return;
-        
-        default:
-            printstr("M: unexpected exception\n");
-            break;
-    }
-
-    for(;;);
-}
 
 

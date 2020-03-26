@@ -27,15 +27,21 @@
 
 #include <stdbool.h>
 
-/* This driver interface is designed to be as simple as possible for SD card support.
- * Performance is not a consideration. It's more important to get things working.
- */
+/* This driver interface is designed to be as simple as possible for SD card support. */
 
 /* Initialize driver. */
 void spi_driver_init(void *ptr);
 
 /* Send a byte, receive a byte. */
 unsigned char spi_driver_xfer(unsigned char out);
+
+/* Receive n bytes, sending 0xFF.
+ * This function exist to speed up block read operations.
+ * A simple driver may implement this using calls to spi_driver_xfer().
+ * More complex drivers can take advantage of this call to setup DMA or pipeline the accesses.
+ * n must be at least 2. There is no advantage to this function for very short transfers.
+ */
+void spi_driver_receive_n(void *buffer, unsigned n);
 
 /* (Un)select the slave. */
 void spi_driver_select(bool select);
