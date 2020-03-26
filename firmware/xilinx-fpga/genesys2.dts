@@ -66,11 +66,10 @@
         ranges;
 
         plic: plic@101000000 {
-            compatible = "dkasza,trivial-plic", "riscv,plic0";
+            compatible = "dkasza,trivial-plic";
             #interrupt-cells = <1>;
             interrupt-controller;
-            riscv,ndev = <31>;
-            reg = <0x1 0x01000000 0x0 0x1000000>;
+            reg = <0x1 0x00020000 0x0 0x10000>;
             interrupts-extended = <&ic 9 &ic 11>;
         };
 

@@ -33,8 +33,8 @@
  * Drivers should be prepared to handle spurious interrupts.
  *
  * Only two registers are implemented:
- *  0x00_2000 - ENABLER
- *  0x20_0004 - CLAIMR
+ *  0x0000 - ENABLER
+ *  0x0004 - CLAIMR
  * All other registers read as 0 and ignore writes.
  *
  * ENABLER is a bitmask of the enabled interrupts.
@@ -94,7 +94,7 @@ module TrivialPLIC(
     /* Write address channel. */
     input           AWVALID,
     output          AWREADY,
-    input  [23:0]   AWADDR,
+    input  [15:0]   AWADDR,
     input  [ 1:0]   AWPROT,
 
     /* Write data channel. */
@@ -111,7 +111,7 @@ module TrivialPLIC(
     /* Read address channel. */
     input           ARVALID,
     output          ARREADY,
-    input  [23:0]   ARADDR,
+    input  [15:0]   ARADDR,
     input  [ 1:0]   ARPROT,
 
     /* Read data channel. */
@@ -120,6 +120,9 @@ module TrivialPLIC(
     output [31:0]   RDATA,
     output [ 2:0]   RRESP
 );
+
+localparam ENABLER = 16'h0000;
+localparam CLAIMR  = 16'h0004;
 
 wire [31:0] irqs = {
     irq31, irq30, irq29, irq28, irq27, irq26, irq25, irq24, irq23, irq22, irq21, irq20, irq19, irq18, irq17, irq16,
@@ -131,6 +134,7 @@ wire [31:0] irqs = {
 reg [31:0] pending_interrupts = 0;
 reg [31:0] enabled_interrupts = 0;
 reg [31:0]  active_interrupts = 0;
+reg [31:0]   ready_interrupts = 0;
 
 /* Find next interrupt to claim. */
 reg [4:0] next_to_claim;
@@ -139,7 +143,7 @@ always_comb begin
 
     next_to_claim = 0;
     for (i=1; i<32; i++) begin
-        if (pending_interrupts[i]) begin
+        if (ready_interrupts[i]) begin
             next_to_claim = i[4:0];
             break;
         end
@@ -151,12 +155,12 @@ always @(posedge ACLK) begin
     automatic reg [31:0] new_active_interrupts  = active_interrupts;
     automatic reg [31:0] new_pending_interrupts = pending_interrupts;
 
-    if (WVALID && WREADY && (write_address == 24'h200004)) begin
+    if (WVALID && WREADY && (write_address == 16'h0004)) begin
         /* Write to CLAIMR. */
         new_active_interrupts[WDATA[4:0]] = 0;
     end
 
-    if (ARVALID && ARREADY && (ARADDR == 24'h200004)) begin
+    if (ARVALID && ARREADY && (ARADDR == CLAIMR)) begin
         /* Read from CLAIMR. */
         if (next_to_claim != 0) begin
             new_active_interrupts[next_to_claim]  = 1;
@@ -165,11 +169,12 @@ always @(posedge ACLK) begin
     end
 
     /* Register new interrupts. */
-    new_pending_interrupts |= (irqs & enabled_interrupts);
+    new_pending_interrupts |= irqs;
 
     active_interrupts  <= new_active_interrupts;
     pending_interrupts <= new_pending_interrupts;
-    s_interrupt <= (new_pending_interrupts != 0);
+    ready_interrupts   <= pending_interrupts & (~active_interrupts) & enabled_interrupts;
+    s_interrupt <= (ready_interrupts != 0);
 end
 
 /* Write state machine. ***********************************************************************************************/
@@ -193,7 +198,7 @@ assign BVALID  = (write_state == WRITE_STATE__RESPONSE) && ARESETn;
 /* Our response is fixed. */
 assign BRESP = 0; /* OKAY */
 
-reg [23:0] write_address = 0;
+reg [15:0] write_address = 0;
 
 always @(posedge ACLK) begin
     if (!ARESETn) begin
@@ -207,8 +212,8 @@ always @(posedge ACLK) begin
             end
         WRITE_STATE__DATA:
             if (WVALID) begin
-                if (write_address == 24'h002000) begin
-                    enabled_interrupts <= WDATA;
+                if (write_address == ENABLER) begin
+                    enabled_interrupts <= {WDATA[31:1], 1'b0};
                 end
                 /* Note: CLAIMR is handled by the interrupt state machine. */
                 write_state <= WRITE_STATE__RESPONSE;
@@ -250,10 +255,10 @@ always @(posedge ACLK) begin
     else case(read_state)
         READ_STATE__IDLE:
             if (ARVALID) begin
-                if (ARADDR == 24'h002000) begin
+                if (ARADDR == ENABLER) begin
                     rdata <= enabled_interrupts;
                 end
-                else if (ARADDR == 24'h200004) begin
+                else if (ARADDR == CLAIMR) begin
                     rdata <= {27'b0, next_to_claim};
                 end
                 else begin
