@@ -11,3 +11,5 @@
 ## Software
 
 * [Buildroot (Linux) for 9444](https://github.com/danielkasza/9444-buildroot)
+
+[![Alt text](https://img.youtube.com/vi/C54EJWEFr2c/0.jpg)](https://www.youtube.com/watch?v=C54EJWEFr2c)
