@@ -34,7 +34,7 @@
     cpus {
         #address-cells = <1>;
         #size-cells = <0>;
-        timebase-frequency = <50000000>;
+        timebase-frequency = <110344835>;
 
         cpu@0 {
             device_type = "cpu";
@@ -43,7 +43,7 @@
             compatible = "riscv";
             riscv,isa = "rv64ima";
             mmu-type = "riscv,sv39";
-            clock-frequency = <50000000>;
+            clock-frequency = <110344835>;
 
             ic: interrupt-controller {
                 #interrupt-cells = <0x1>;
@@ -65,7 +65,7 @@
         compatible = "dkasza,9444-fpga-genesys2-soc", "simple-bus";
         ranges;
 
-        plic: plic@101000000 {
+        plic: plic@100020000 {
             compatible = "dkasza,trivial-plic";
             #interrupt-cells = <1>;
             interrupt-controller;
@@ -100,10 +100,22 @@
             };
         };
 
-        ps2@100020000 {
+        ps2@100030000 {
             compatible = "dkasza,trivial-ps2", "xlnx,xps-ps2-1.00.a";
             interrupts-extended = <&plic 3>;
-            reg = <0x1 0x00020000 0x0 0x10000>;
+            reg = <0x1 0x00030000 0x0 0x10000>;
+        };
+
+        ps2@100040000 {
+            compatible = "dkasza,trivial-ps2", "xlnx,xps-ps2-1.00.a";
+            interrupts-extended = <&plic 4>;
+            reg = <0x1 0x00040000 0x0 0x10000>;
+        };
+
+        ps2@100050000 {
+            compatible = "dkasza,trivial-ps2", "xlnx,xps-ps2-1.00.a";
+            interrupts-extended = <&plic 5>;
+            reg = <0x1 0x00050000 0x0 0x10000>;
         };
 
         framebuffer@bfe80000 {
@@ -117,6 +129,6 @@
     };
 
     chosen {
-        bootargs = "console=ttyUL0 rootdelay=5 root=/dev/mmcblk0p1 rw";
+        bootargs = "console=ttyUL0 rootdelay=2 root=/dev/mmcblk0 rw";
     };
 };
