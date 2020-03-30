@@ -13,6 +13,7 @@ xxd -i genesys2.dtb > dtb.c
 
 # Compile the firmware
 riscv64-unknown-elf-gcc                                                         \
+    -DTARGET_GENESYS2                                                           \
     -mcmodel=medlow                                                             \
     -Os                                                                         \
     -o "firmware.elf"                                                           \

@@ -40,13 +40,21 @@
 #define KERNEL_SIZE_MAX                             (32*1024*1024)
 #define DTB_SIZE_MAX                                ( 1*1024*1024)
 
-/* Path of kernel image to load. */
-const char *kernel_path[]       = { "boot", "Image", NULL };
-const char *dtb_override_path[] = { "boot", "override.dtb", NULL };
-
-/* The device tree. */
+#ifdef TARGET_GENESYS2
 extern unsigned char genesys2_dtb[];
 extern int genesys2_dtb_len;
+#define TARGET_DTB                  genesys2_dtb
+#define TARGET_DTB_LEN              genesys2_dtb_len
+#define TARGET_FRAMEBUFFER          ((void*)0xBFE80000)
+#define TARGET_FRAMEBUFFER_LEN      0x180000
+#define TARGET_BOOTLOGO_NAME        "1024x768.fb"
+#else
+#error Unknown target!
+#endif
+
+const char *kernel_path[]       = { "boot", "Image", NULL };
+const char *dtb_override_path[] = { "boot", "override.dtb", NULL };
+const char *bootlogo_path[]     = { "boot", TARGET_BOOTLOGO_NAME, NULL };
 
 void printc(char c) {
     /* Wait for space in the TX FIFO. */
@@ -69,6 +77,9 @@ int main() {
     const char *result;
     ext2_inode_t inode = { 0 };
 
+    /* Clear the framebuffer before printing anything, so the user does not see garbage on the screen. */
+    memset(TARGET_FRAMEBUFFER, 0, TARGET_FRAMEBUFFER_LEN);
+
     printstr(banner);
     
     printstr("Initializing SPI driver...");
@@ -88,6 +99,27 @@ int main() {
         &fs
     );
     check_str_result(result);
+
+    printstr("Checking for boot logo...");
+    result = ext2_get_inode_by_path(&fs, bootlogo_path, &inode);
+    if (result == NULL) {
+        if (inode.size != TARGET_FRAMEBUFFER_LEN) {
+            printstr("wrong size\n");
+        } else {
+            printstr("found it!\n");
+
+            printstr("Loading boot logo...");
+            (void)ext2_read(
+                &fs, &inode,
+                0, TARGET_FRAMEBUFFER_LEN,
+                (uint8_t*)TARGET_FRAMEBUFFER
+            );
+            check_str_result(NULL);
+        }
+    } else {
+        printstr("none\n");
+    }
+
 
     printstr("Opening kernel image...");
     result = ext2_get_inode_by_path(&fs, kernel_path, &inode);
