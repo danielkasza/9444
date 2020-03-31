@@ -50,12 +50,3 @@ set_property -dict {PACKAGE_PIN R29 IOSTANDARD LVCMOS33} [get_ports memory_card_
 set_property -dict {PACKAGE_PIN R26 IOSTANDARD LVCMOS33} [get_ports memory_card_spi_io1_io]
 set_property -dict {PACKAGE_PIN R28 IOSTANDARD LVCMOS33} [get_ports memory_card_spi_sck_io]
 set_property -dict {PACKAGE_PIN T30 IOSTANDARD LVCMOS33} [get_ports {memory_card_spi_ss_io[0]}]
-
-set_property SLEW FAST [get_ports memory_card_spi_io1_io]
-set_property DRIVE 16 [get_ports memory_card_spi_io1_io]
-set_property DRIVE 16 [get_ports memory_card_spi_io0_io]
-set_property SLEW FAST [get_ports memory_card_spi_io0_io]
-set_property DRIVE 16 [get_ports {memory_card_spi_ss_io[0]}]
-set_property SLEW FAST [get_ports {memory_card_spi_ss_io[0]}]
-set_property DRIVE 16 [get_ports memory_card_spi_sck_io]
-set_property SLEW FAST [get_ports memory_card_spi_sck_io]
