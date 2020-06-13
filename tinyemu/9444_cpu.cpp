@@ -34,6 +34,9 @@ static VerilatedVcdC* trace;
 #define TRACE(_time_)
 #endif
 
+#ifdef LOG_MEMORY_ACCESSES
+static FILE *mem_access_log_file;
+#endif
 
 static Vcpu *cpu;
 static PhysMemoryMap *mem_map = NULL;
@@ -218,6 +221,15 @@ static void cpu_9444_cpu_interp(RISCVCPUState *s, int n_cycles) {
         if (cpu->mem_cycle) {
             mem_cycles++;
 
+#ifdef LOG_MEMORY_ACCESSES
+            fprintf(
+                mem_access_log_file,
+                "%c%" PRIx64 "\n",
+                cpu->mem_access & 1 ? 'w' : 'r',
+                paddr
+            );
+#endif
+
             switch(cpu->mem_access) {
                 default:
                 case 0:     /* BYTE_READ */
@@ -346,6 +358,14 @@ RISCVCPUState *riscv_cpu_init(PhysMemoryMap *_mem_map, int max_xlen) {
 
 #ifdef VCD_TRACE
     Verilated::traceEverOn(true);
+#endif
+
+#ifdef LOG_MEMORY_ACCESSES
+    mem_access_log_file = fopen("9444-simulator.mem.txt", "w");
+    if (mem_access_log_file == NULL) {
+        fprintf(stderr, "Could not open memory access log!\n");
+        cpu_9444_panic();
+    }
 #endif
 
     mem_map = _mem_map;

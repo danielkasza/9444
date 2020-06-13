@@ -72,6 +72,8 @@ CFLAGS+=-Icpu_lib/
 CPU_LIB=cpu_lib/Vcpu__ALL.a
 endif
 
+#CFLAGS+=-DLOG_MEMORY_ACCESSES
+
 all: $(PROGS)
 
 EMU_OBJS:=virtio.o pci.o fs.o cutils.o iomem.o simplefb.o \

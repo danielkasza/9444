@@ -1,3 +1,4 @@
 *.bin
 *.elf
 *.coe
+tinyemu/9444-simulator.mem.txt
