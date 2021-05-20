@@ -32,7 +32,8 @@
  * Read handling:
  *  - 1 clock latency on a cache hit.
  *  - 1+n clock latency if the cache line is not present in the cache. In this case, we have to wait for all write
- *    transactions in the same bucket to complete before we can read in the cache line.
+ *    transactions in the bucket to complete before we can read in the cache line, then wait for the read operation
+ *    to complete before returning the result.
  *
  * Write handling:
  *  - Write transactions always go on the AXI bus.
@@ -43,7 +44,7 @@
  * Buckets:
  *  - There are 8 transaction "buckets".
  *  - All AXI transactions fall into one of the buckets.
- *  - Outstanding write transactions are counter per bucket.
+ *  - Outstanding write transactions are counted per bucket.
  *  - Buckets should significantly reduce the cost of fetching a new cache line because there is a good chance that
  *    the transaction bucket corresponding to the read transaction is empty.
  */
